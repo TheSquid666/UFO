@@ -2,10 +2,10 @@
 	"source": "UE",
 	"applications": [
 		{
-			"app_key": "application.generated.ue.flying-game-template-15228867.ue4editor.exe",
+			"app_key": "application.generated.ue.flying-game-template-15228867.ue4editor-win64-debuggame.exe",
 			"launch_type": "url",
 			"url": "steam://launch/",
-			"action_manifest_path": "C:/Users/Stealth/Documents/Unreal Projects/UFO/Config/SteamVRBindings/steamvr_manifest.json",
+			"action_manifest_path": "C:/Projects/UFO/Config/SteamVRBindings/steamvr_manifest.json",
 			"strings":
 			{
 				"en_us":

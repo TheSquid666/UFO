@@ -1,20 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Jonathan Paturel, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "UFOPawn.generated.h"
 
-UENUM()
-enum Status
-{
-	Stopped            UMETA(DisplayName = "Stopped"),
-	FaceTarget         UMETA(DisplayName = "FaceTarget"),
-	Moving             UMETA(DisplayName = "Moving"),
-	OrientAtTarget     UMETA(DisplayName = "OrientAtTarget"),
-};
-
-
+/*
+* UFO Actor (Simple and Quick)
+* Contain the Movement/Physics in this class for space flight
+* Using Kinematic without Impluses
+* TODO: If this is to be used in Unreal, just use a MovementComponent instead
+*/
 UCLASS(Config=Game)
 class AUFOPawn : public APawn
 {
@@ -32,25 +28,20 @@ class AUFOPawn : public APawn
 	UPROPERTY(Category = Camera, VisibleDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCameraComponent* Camera;
 
+	/*Implement the movement component in the actor since it is part of the requirements*/
+	FVector Velocity;
+	//FQuat Rotation;
+
+	FVector LinearInput;
+	FQuat AngularInput;
+	FQuat LocalAngularInput;
+
+protected:
+	void UpdateThrustParticles();
+
 public:
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
-		bool EnableAi;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
-		bool DebugAi;
-
-	UPROPERTY(VisibleAnywhere, Category = AI)
-		TEnumAsByte<Status> NavStatus;
-	
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = AI)
-		bool TargetReached;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
-		class ATargetPoint* MoveTarget;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
-		float TargetReachedDist;
+		class ATargetPoint* Target;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ParticleSystem)
 		class UParticleSystemComponent* LeftTruster;
@@ -61,98 +52,54 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ParticleSystem)
 		class UParticleSystemComponent* RotationTruster;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float pitch;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float yaw;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float roll;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float strafe;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float throttle;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
+		float SpeedThreshold;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float THROTTLE_SPEED = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	FVector linearForce;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	FVector angularForce;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float reverseMultiplier = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation)
-	float forceMultiplier = 100.0f;
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
+		float RollScale;
 public:
+	void SetLinearInput(FVector& newLinearInput) { LinearInput = newLinearInput; }
+	void SetAngularInput(FQuat& newAngularInput) { AngularInput = newAngularInput; }
+
 	AUFOPawn();
 
 	// Begin AActor overrides
 	virtual void Tick(float DeltaSeconds) override;
 	// End AActor overrides
+	void StopAllMovement();
 
-	bool UpdateRotation(float DeltaTime, FVector Direction);
-	bool UpdateMovement(float DeltaTime);
+	FORCEINLINE void StopAngularMovement()
+	{
+		AngularInput = FQuat::Identity;
+	}
 
-	void Stop();
-	
-	bool IsTargetReached();
+	FORCEINLINE void StopLinearMovement()
+	{
+		Velocity = LinearInput = FVector::ZeroVector;
+	}
 
 
-protected:
-
-	// Begin APawn overrides
-	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override; // Allows binding actions/axes to functions
-	// End APawn overrides
-
-	/** Bound to the thrust axis */
-	void ThrustInput(float Val);
-	
-	/** Bound to the vertical axis */
-	void MoveUpInput(float Val);
-
-	/** Bound to the horizontal axis */
-	void MoveRightInput(float Val);
-
-	//AI Navigation
-	void UpdateState(float DeltaTime);
-
-	void FixedUpdate();
-	void SetPhysicsInput(FVector linearInput, FVector angularInput);
 private:
 
-	///** How quickly forward speed changes */
-	//UPROPERTY(Category=Plane, EditAnywhere)
-	//float Acceleration;
+	UPROPERTY(Category = Movement, EditAnywhere)
+		float MinSpeed;
 
-	///** How quickly pawn can steer */
-	//UPROPERTY(Category=Plane, EditAnywhere)
-	//float TurnSpeed;
+	/** Max forward speed */
+	UPROPERTY(Category = Movement, EditAnywhere)
+		float MaxSpeed;
 
-	///** Max forward speed */
-	//UPROPERTY(Category = Pitch, EditAnywhere)
-	//float MaxSpeed;
+	UPROPERTY(Category = Movement, EditAnywhere)
+		float MaxAcceleration;
 
-	///** Min forward speed */
-	//UPROPERTY(Category=Yaw, EditAnywhere)
-	//float MinSpeed;
+	/** How quickly pawn can steer */
+	UPROPERTY(Category = Movement, EditAnywhere)
+	float MaxRollSpeed;
 
-	///** Current forward speed */
-	//float CurrentForwardSpeed;
+	UPROPERTY(Category = Movement, EditAnywhere)
+	float MaxYawSpeed;
 
-	///** Current yaw speed */
-	//float CurrentYawSpeed;
-
-	///** Current pitch speed */
-	//float CurrentPitchSpeed;
-
-	///** Current roll speed */
-	//float CurrentRollSpeed;
-	FVector appliedLinearForce;
-	FVector appliedAngularForce;
+	UPROPERTY(Category = Movement, EditAnywhere)
+	float MaxPitchSpeed;
 
 public:
 	/** Returns PlaneMesh subobject **/
@@ -165,4 +112,14 @@ public:
 	FORCEINLINE class UParticleSystemComponent* GetRightTruster() const { return RightTruster; }
 	FORCEINLINE class UParticleSystemComponent* GetLeftTruster() const { return LeftTruster; }
 	FORCEINLINE class UParticleSystemComponent* GetRotationTruster() const { return RotationTruster; }
+
+	FORCEINLINE float GetMaxRollSpeed() const { return MaxRollSpeed; }
+	FORCEINLINE float GetMaxYawSpeed() const { return MaxYawSpeed; }
+	FORCEINLINE float GetMaxPitchSpeed() const { return MaxPitchSpeed; }
+	FORCEINLINE float GetMaxSpeed() const { return MaxSpeed; }
+	FORCEINLINE float GetMinSpeed() const { return MinSpeed; }
+	FORCEINLINE float GetMaxAcceleration() const {return MaxAcceleration;}
+
+	FORCEINLINE FVector GetVelocity() const { return Velocity; }
+	FORCEINLINE ATargetPoint* GetTarget() const { return Target; }
 };

@@ -14,8 +14,7 @@
 
 
 AUFOPawn::AUFOPawn() :
-	Velocity{ FVector::ZeroVector }, LinearInput{ FVector::ZeroVector }, AngularInput{ FQuat::Identity }, LocalAngularInput{ FQuat::Identity },
-	SpeedThreshold{ 50.f }, RollScale{ 57.3f},
+	Velocity{ FVector::ZeroVector }, LinearInput{ FVector::ZeroVector }, AngularInput{ FQuat::Identity }, 
 	MinSpeed{5.f}, MaxSpeed{ 4000.f }, MaxAcceleration{ 500.f }, MaxRollSpeed{ 10.f }, MaxYawSpeed{ 10.f }, MaxPitchSpeed{ 10.f }
 {
 	// Structure to hold one-time initialization
@@ -49,7 +48,10 @@ AUFOPawn::AUFOPawn() :
 	
 }
 
-void AUFOPawn::UpdateThrustParticles() 
+/*
+* Enable the Trusters particles when LinearInput is there
+*/
+void AUFOPawn::UpdateThrustParticles()
 {
 	bool bHasThrust = !(LinearInput.IsNearlyZero());
 	if (LeftTruster != nullptr)
@@ -87,6 +89,7 @@ void AUFOPawn::StopAllMovement()
 	StopLinearMovement();
 }
 
+
 void AUFOPawn::Tick(float DeltaSeconds)
 {
 	/*Kinematic updates*/	
@@ -103,14 +106,16 @@ void AUFOPawn::Tick(float DeltaSeconds)
 	if (!AngularInput.IsIdentity())
 	{
 		FRotator angularRotator = AngularInput.Rotator();
-		//Get to the value for angle under 5
-		float rollInput = FMath::Clamp(angularRotator.Roll, -MaxRollSpeed, MaxRollSpeed) * DeltaSeconds;
-		float pitchInput = FMath::Clamp(angularRotator.Pitch, -MaxPitchSpeed, MaxPitchSpeed) * DeltaSeconds;
-		float yawInput = FMath::Clamp(angularRotator.Yaw, -MaxYawSpeed, MaxYawSpeed) * DeltaSeconds;
-		FRotator deltaRotator { pitchInput, yawInput, rollInput };
-		deltaRotator.Normalize();
 
-		AddActorLocalRotation(deltaRotator);
+		//Limit the input values on MaxValues and factor in the deltatime
+		float rollInput = FMath::DegreesToRadians(FMath::Clamp(angularRotator.Roll * DeltaSeconds, -MaxRollSpeed, MaxRollSpeed)) ;
+		float pitchInput = FMath::DegreesToRadians(FMath::Clamp(angularRotator.Pitch * DeltaSeconds, -MaxPitchSpeed, MaxPitchSpeed));
+		float yawInput = FMath::DegreesToRadians(FMath::Clamp(angularRotator.Yaw * DeltaSeconds, -MaxYawSpeed, MaxYawSpeed));
+		FQuat delta = FQuat(FVector::ForwardVector, rollInput);
+		delta *= FQuat(FVector::RightVector, pitchInput);
+		delta *= FQuat(FVector::UpVector, yawInput);
+
+		AddActorLocalRotation(delta);
 	}
 
 	UpdateThrustParticles();

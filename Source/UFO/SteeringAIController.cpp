@@ -5,6 +5,7 @@
 #include "Engine/TargetPoint.h"
 #include "UFOPawn.h"
 #include "DrawDebugHelpers.h"
+#include "Kismet/KismetMathLibrary.h"
 
 ASteeringAIController::ASteeringAIController() 
 	: MyUfo{ nullptr }
@@ -12,13 +13,16 @@ ASteeringAIController::ASteeringAIController()
 	, SteeringQuat{ FQuat::Identity }
 	, bTargetMoved{ true }
 	, bDebugAll{true}
-	, bDebugRotation{false}
-	, bDebugMovement{false}
-	, DebugOnScreenTime{0.003f}
+	, bDebugRotation{ true }
+	, bDebugMovement{ true }
+	, DebugOnScreenTime{0.03f}
 	, Target{nullptr}
+	, TargetAngleReachedTolerance{ 2.f }
 	, TargetReachedRadius{5.f}
 	, TargetSlowRadius{500.f}
 	, TimeToTarget{0.1f}
+	, RollScale{ -0.4f }
+	, bAddRollOnTurns {true}
 	, NavStatus{ ENS_Stopped }
 {}
 
@@ -38,6 +42,10 @@ void ASteeringAIController::OnUnPossess()
 	Target = nullptr;
 }
 
+/*
+* Steering State Machine
+* The brain
+*/
 void ASteeringAIController::UpdateState(float DeltaTime)
 {
 	if (Target == nullptr || MyUfo == nullptr)
@@ -45,9 +53,6 @@ void ASteeringAIController::UpdateState(float DeltaTime)
 		StopMovement();
 		return;
 	}
-
-	FVector targetPos = Target->GetActorLocation();
-	FVector curPos = MyUfo->GetActorLocation();
 
 	switch (NavStatus)
 	{
@@ -60,63 +65,84 @@ void ASteeringAIController::UpdateState(float DeltaTime)
 		}
 		break;
 	case ENavStatus::ENS_Moving:
+	{
+		if (Arrive())
 		{
-			if (Arrive())
-			{
-				//We have arrived within radius
-				NavStatus = ENavStatus::ENS_Aligning;
-			}
+			//We have arrived within radius
+			NavStatus = ENavStatus::ENS_Aligning_yaw;
 		}
-		break;
-	case ENavStatus::ENS_Aligning:
+	}
+	break;
+	case ENavStatus::ENS_Aligning_yaw:
+	{
+		//Align with the desired orientation
+		if (AlignYaw())
 		{
-			//Align with the desired orientation
-			if (Align3D())
-			{
-				NavStatus = ENavStatus::ENS_Stopped;
-			}
+			NavStatus = ENavStatus::ENS_Aligning_pitch;
 		}
-		break;
+	}
+	break;
+	case ENavStatus::ENS_Aligning_pitch:
+	{
+		//Align with the desired orientation
+		if (AlignPitch())
+		{
+			NavStatus = ENavStatus::ENS_Aligning_roll;
+		}
+	}
+	break;
+	case ENavStatus::ENS_Aligning_roll:
+	{
+		//Align with the desired orientation
+		if (AlignRoll())
+		{
+			NavStatus = ENavStatus::ENS_Stopped;
+			StopMovement();
+		}
+	}
+	break;
 	}
 }
 
+//Generic method for all "align", curent and expected values (yaw, pitch roll) and the vector to make the Quat
+bool ASteeringAIController::Align3D(float currentVal, float expectedVal, const FVector& quatVector)
+{
+	if (!FMath::IsNearlyEqual(currentVal, expectedVal, TargetAngleReachedTolerance))
+	{
+		float delta = FMath::DegreesToRadians(expectedVal - currentVal);
+		SteeringQuat *= FQuat{ quatVector, delta };
+		return false;
+	}
 
+	return true;
+}
+
+bool ASteeringAIController::AlignRoll()
+{
+	SteeringQuat = FQuat::Identity;
+	return Align3D(MyUfo->GetActorRotation().Roll, Target->GetActorRotation().Roll, FVector::ForwardVector);
+}
+
+bool ASteeringAIController::AlignPitch()
+{
+	SteeringQuat = FQuat::Identity;
+	return Align3D(MyUfo->GetActorRotation().Pitch, Target->GetActorRotation().Pitch, FVector::RightVector);
+}
+
+bool ASteeringAIController::AlignYaw()
+{
+	SteeringQuat = FQuat::Identity;
+	return Align3D(MyUfo->GetActorRotation().Yaw, Target->GetActorRotation().Yaw, FVector::UpVector);
+}
 
 /*
-* Align one of the yaw, pitch roll at a time
+* Get the Yaw and Pitch to face the target
+* Add some roll for "turns", just like planes, but in space...
 */
-bool ASteeringAIController::Align3D()
-{
-	FRotator desiredOrientation = Target->GetActorRotation();
-	FRotator actualOrientation = MyUfo->GetActorRotation();
-	if (!FMath::IsNearlyEqual(actualOrientation.Yaw, desiredOrientation.Yaw, 1.f))
-	{
-		float delta = desiredOrientation.Yaw - actualOrientation.Yaw;	
-		SteeringQuat = FQuat{ FRotator{ 0.f, delta, 0.f } };
-	}
-	else if (!FMath::IsNearlyEqual(actualOrientation.Pitch, desiredOrientation.Pitch, 1.f))
-	{
-		float delta = desiredOrientation.Pitch - actualOrientation.Pitch;
-		SteeringQuat = FQuat{ FRotator{ delta, 0.f, 0.f } };
-	}
-	else if (!FMath::IsNearlyEqual(actualOrientation.Roll, desiredOrientation.Roll, 1.f))
-	{
-		float delta = desiredOrientation.Roll - actualOrientation.Roll;		
-		SteeringQuat = FQuat{ FRotator{ 0.f, 0.f, delta } };
-	}
-	else
-	{
-		MyUfo->StopAngularMovement();
-		SteeringQuat = FQuat::Identity;
-		return true;
-	}
-
-	return false;
-}
-
 bool ASteeringAIController::Face3D(const FVector& normalDir)
 {
 	FVector actorForward = MyUfo->GetActorForwardVector();
+	//Stop check
 	if (FVector::Coincident(actorForward, normalDir))
 	{
 		MyUfo->StopAngularMovement();
@@ -124,7 +150,26 @@ bool ASteeringAIController::Face3D(const FVector& normalDir)
 		return true;
 	}
 
-	SteeringQuat = FQuat::FindBetweenNormals(actorForward, normalDir);
+	//Get a local direction to the target
+	FVector localDirectionToTarget = MyUfo->GetActorTransform().InverseTransformPosition(Target->GetActorLocation());
+
+	float yaw;
+	float pitch;
+	float roll = 0.f;
+	UKismetMathLibrary::GetYawPitchFromVector(localDirectionToTarget,yaw, pitch);
+
+	SteeringQuat = FQuat::Identity;
+	if (bAddRollOnTurns)
+	{
+		//Add some rolls on turns, just for fun (negative rollscale work best)
+		roll = FMath::DegreesToRadians(yaw * RollScale);
+		SteeringQuat *= FQuat(FVector::ForwardVector, roll);
+	}
+		
+	float pitchInput = FMath::DegreesToRadians(pitch);
+	float yawInput = FMath::DegreesToRadians(yaw);
+	SteeringQuat *= FQuat(FVector::RightVector, pitchInput);
+	SteeringQuat *= FQuat(FVector::UpVector, yawInput);
 
 	return false;
 }
@@ -142,7 +187,7 @@ bool ASteeringAIController::Arrive()
 	FVector normalDir = direction / distance;
 
 	float targetSpeed = 0.f;
-	
+	//Stop check
 	if (distance < TargetReachedRadius)
 	{
 		//Target zone reached
@@ -150,8 +195,7 @@ bool ASteeringAIController::Arrive()
 		MyUfo->StopLinearMovement();
 		return true;
 	}
-
-	//Turn to where you are going
+	
 	Face3D(normalDir);
 
 	float maxSpeed = MyUfo->GetMaxSpeed();
@@ -165,9 +209,10 @@ bool ASteeringAIController::Arrive()
 	}
 
 	FVector curForward = MyUfo->GetActorForwardVector();
+	//Reduce the speed until we are in the direction of the target (Face3D completes)
 	targetSpeed *= FVector::DotProduct(curForward, normalDir);
 	
-	//Make sure the speed is a least the min, and at most the max
+	//Make sure the speed is at least the min, and at most the max
 	targetSpeed = FMath::Clamp(targetSpeed, MyUfo->GetMinSpeed(), maxSpeed);
 
 	FVector targetVelocity = curForward * targetSpeed;
@@ -192,6 +237,10 @@ void ASteeringAIController::StopMovement()
 	MyUfo->SetAngularInput(SteeringQuat);
 }
 
+
+/*
+* Blueprint callable to change the target
+*/
 void ASteeringAIController::SetTarget(ATargetPoint* newTarget)
 {
 	Target = newTarget;
@@ -223,9 +272,16 @@ void ASteeringAIController::DebugDisplay() const
 	FVector pawnLoc = MyUfo->GetActorLocation();
 	if (bDebugAll || bDebugRotation)
 	{
-		FVector pawnForward = MyUfo->GetActorForwardVector();
-		DrawDebugDirectionalArrow(GetWorld(), pawnLoc, pawnLoc + pawnForward *200.f, 120.f, FColor::White, false, DebugOnScreenTime, 0, 5.f);
-		DrawDebugDirectionalArrow(GetWorld(), pawnLoc, pawnLoc + SteeringQuat.RotateVector(pawnForward) * 200.f, 120.f, FColor::Blue, false, DebugOnScreenTime, 0, 5.f);
+		FRotator rotator = SteeringQuat.Rotator();
+		GEngine->AddOnScreenDebugMessage(-1, DebugOnScreenTime, FColor::Orange, FString::Printf(TEXT("Yaw: %.2f | Pitch : %.2f | Roll : %.2f "), rotator.Yaw, rotator.Pitch, rotator.Roll));
+		UE_LOG(LogTemp, Warning, TEXT("State: %d | Yaw: %.2f | Pitch : %.2f | Roll : %.2f "), NavStatus.GetValue(), rotator.Yaw, rotator.Pitch, rotator.Roll);
+
+		if (NavStatus == ENS_Moving)
+		{
+			FVector pawnForward = MyUfo->GetActorForwardVector();
+			DrawDebugDirectionalArrow(GetWorld(), pawnLoc, pawnLoc + pawnForward * 200.f, 120.f, FColor::White, false, DebugOnScreenTime, 0, 5.f);
+			DrawDebugDirectionalArrow(GetWorld(), pawnLoc, pawnLoc + SteeringQuat.RotateVector(pawnForward) * 200.f, 120.f, FColor::Blue, false, DebugOnScreenTime, 0, 5.f);
+		}
 	}
 
 	if ((bDebugAll || bDebugMovement) && SteeringVelocity.SizeSquared() > 0.f)

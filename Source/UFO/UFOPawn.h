@@ -34,7 +34,6 @@ class AUFOPawn : public APawn
 
 	FVector LinearInput;
 	FQuat AngularInput;
-	FQuat LocalAngularInput;
 
 protected:
 	void UpdateThrustParticles();
@@ -52,11 +51,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ParticleSystem)
 		class UParticleSystemComponent* RotationTruster;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
-		float SpeedThreshold;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
-		float RollScale;
 public:
 	void SetLinearInput(FVector& newLinearInput) { LinearInput = newLinearInput; }
 	void SetAngularInput(FQuat& newAngularInput) { AngularInput = newAngularInput; }
@@ -102,6 +97,8 @@ private:
 	float MaxPitchSpeed;
 
 public:
+	void RandomlyPlaceTarget();
+
 	/** Returns PlaneMesh subobject **/
 	FORCEINLINE class UStaticMeshComponent* GetPlaneMesh() const { return PlaneMesh; }
 	/** Returns SpringArm subobject **/

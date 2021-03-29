@@ -13,7 +13,9 @@ enum ENavStatus
 {
 	ENS_Stopped            UMETA(DisplayName = "Stopped"),	
 	ENS_Moving             UMETA(DisplayName = "Moving"),
-	ENS_Aligning           UMETA(DisplayName = "Aligning"),
+	ENS_Aligning_yaw       UMETA(DisplayName = "Aligning Yaw"),
+	ENS_Aligning_pitch     UMETA(DisplayName = "Aligning Pitch"),
+	ENS_Aligning_roll      UMETA(DisplayName = "Aligning Roll"),
 };
 
 /**
@@ -52,6 +54,9 @@ public:
 		class ATargetPoint* Target;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
+		float TargetAngleReachedTolerance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
 		float TargetReachedRadius;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
@@ -60,7 +65,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AI)
 		float TimeToTarget;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
+		float RollScale;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Roll)
+		bool bAddRollOnTurns;
 
 	/*Read Only*/
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = AI, Meta = (Bitmask, BitmaskEnum = "ENavStatus"))
@@ -68,7 +77,11 @@ public:
 
 protected:
 	void UpdateState(float DeltaTime);
-	bool Align3D();
+	bool Align3D(float currentVal, float expectedVal, const FVector& quatVector);
+	bool AlignYaw();
+	bool AlignPitch();
+	bool AlignRoll();
+	
 	bool Face3D(const FVector& direction);
 	bool Arrive();
 	void GetFakeOrientation(const FVector& direction);
